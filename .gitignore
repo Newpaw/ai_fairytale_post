@@ -10,3 +10,5 @@ wheels/
 .venv
 
 config.py
+
+selected_animals.json

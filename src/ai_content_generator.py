@@ -2,7 +2,7 @@ import os
 import json
 import requests
 import re
-import uuid  # Importing uuid for unique image naming
+import uuid
 from openai import AzureOpenAI
 from config import API_VERSION, AZURE_ENDPOINT, API_KEY, DALLE_API_VERSION
 from logger import logger
@@ -19,7 +19,7 @@ def load_selected_animals() -> list:
             try:
                 return json.load(file)
             except json.JSONDecodeError:
-                logger.error("Error decoding JSON from history file.")
+                logger.error("Chyba při čtení JSON ze souboru historie.")
                 return []
     return []
 
@@ -49,26 +49,28 @@ def choose_random_mood() -> str:
 
 def generate_image(animal_name: str, mood: str, title: str) -> Optional[str]:
     """
-    Generates an image using DALL-E 3 with a prompt that clearly incorporates the animal name,
-    its mood, and the story title. The prompt is in English to ensure best results.
+    Vygeneruje obrázek pomocí DALL-E 3 s promptem, který obsahuje jméno zvířete,
+    jeho náladu a název příběhu. Vrátí absolutní cestu k uloženému obrázku.
     """
     client = AzureOpenAI(
         api_version=DALLE_API_VERSION,
         azure_endpoint=AZURE_ENDPOINT,
         api_key=API_KEY
     )
+    prompt = (
+        f"Create an enchanting and detailed illustration in a plush, heartwarming style that clearly reflects a unique Czech fairy tale. "
+        f"Focus on a {animal_name} that radiates a distinct air of {mood}. "
+        f"Infuse the illustration with the narrative spirit and atmosphere of the fairy tale titled '{title}'. "
+        "The animal should have soft, rounded features, expressive eyes, and a cuddly, huggable appearance. "
+        "The background should enhance the overall mood with dreamy pastel hues and subtle magical elements. "
+        "Ensure that the animal's characteristics, its mood, and the story's title are all clearly represented in the composition. "
+        "Do not include any text, letters, or numbers in the image!"
+    )
+    logger.info(f"Generating image with prompt: {prompt}")
+    
     try:
-        prompt = (
-            f"Create an enchanting and detailed illustration in a plush, heartwarming style that clearly reflects a unique Czech fairy tale. "
-            f"Focus on a {animal_name} that radiates a distinct air of {mood}. "
-            f"Infuse the illustration with the narrative spirit and atmosphere of the fairy tale titled '{title}'. "
-            "The animal should have soft, rounded features, expressive eyes, and a cuddly, huggable appearance. "
-            "The background should enhance the overall mood with dreamy pastel hues and subtle magical elements. "
-            "Ensure that the animal's characteristics, its mood, and the story's title are all clearly represented in the composition. "
-            "Do not include any text, letters, or numbers in the image!"
-        )
         result = client.images.generate(
-            model="dalle-e-3",  # Name of your DALL-E 3 deployment
+            model="dalle-e-3",
             prompt=prompt,
             n=1
         )
@@ -76,22 +78,31 @@ def generate_image(animal_name: str, mood: str, title: str) -> Optional[str]:
         logger.error(f"Error generating image: {e}")
         return None
 
+    logger.debug(f"Result from image generation: {result}")
+    
     try:
-        json_response = json.loads(result.model_dump_json())
-        image_url = json_response["data"][0]["url"]
-    except (KeyError, IndexError, json.JSONDecodeError) as e:
+        if hasattr(result, "model_dump_json"):
+            result_json = json.loads(result.model_dump_json())
+        else:
+            result_json = result
+        logger.debug(f"Parsed JSON response: {result_json}")
+        image_url = result_json["data"][0]["url"]
+        logger.info(f"Extracted image URL: {image_url}")
+    except Exception as e:
         logger.error(f"Error parsing image generation response: {e}")
         return None
 
-    # Create the images directory safely
-    image_dir = os.path.join(os.curdir, 'images')
+    image_dir = os.path.join(BASE_DIR, 'images')
     os.makedirs(image_dir, exist_ok=True)
-    
-    # Generate a unique filename using uuid
     unique_filename = f"{uuid.uuid4()}.png"
     image_path = os.path.join(image_dir, unique_filename)
 
-    response = requests.get(image_url)
+    try:
+        response = requests.get(image_url)
+    except Exception as e:
+        logger.error(f"Error downloading image: {e}")
+        return None
+
     if response.status_code == 200:
         with open(image_path, "wb") as image_file:
             image_file.write(response.content)
@@ -138,7 +149,7 @@ def generate_post_title_and_story(animal_name: str, mood: str) -> Optional[Tuple
     ]
     try:
         completion = client.chat.completions.create(
-            model="gpt-4",  # or 'gpt-35-turbo'
+            model="gpt-4",
             messages=messages,
             temperature=0.7,
             max_tokens=4000
@@ -149,7 +160,6 @@ def generate_post_title_and_story(animal_name: str, mood: str) -> Optional[Tuple
 
     if completion and completion.choices:
         answer_text = completion.choices[0].message.content
-        # Clean up the response by removing markdown code fences
         answer_text = "\n".join(
             line for line in answer_text.splitlines() if line.strip() not in ("```", "```html")
         )
@@ -165,40 +175,35 @@ def generate_unique_animal_content(max_attempts: int = 10) -> Tuple[str, str, st
     while attempts < max_attempts:
         animal = choose_random_animal()
         mood = choose_random_mood()
-        # Use a separator to create a unique identifier
         identifier = f"{animal}|{mood}"
         if not is_animal_selected(identifier):
             result = generate_post_title_and_story(animal, mood)
             if not result:
-                logger.error("Story generation failed, trying another animal...")
+                logger.error("Generování příběhu selhalo, zkouším další zvíře...")
                 attempts += 1
                 continue
             title, story = result
-
-            # Remove the first <h2> element from the story so it's not returned twice.
+            # Odstraníme první <h2> (název) z příběhu, aby se neopakoval
             story = re.sub(r"<h2>.*?</h2>\s*", "", story, count=1, flags=re.IGNORECASE | re.DOTALL)
-            
             image_path = generate_image(animal, mood, title)
             if not image_path:
-                logger.error("Image generation failed, trying another animal...")
+                logger.error("Generování obrázku selhalo, zkouším další zvíře...")
                 attempts += 1
                 continue
-
             save_selected_animal(identifier)
-            
             return title, story, image_path
         else:
-            logger.warning(f"The animal '{animal}' with mood '{mood}' has already been selected. Trying again...")
+            logger.warning(f"Zvíře '{animal}' s náladou '{mood}' už bylo vybráno. Zkouším další...")
             attempts += 1
 
-    raise Exception("No unique animal content could be generated after multiple attempts.")
+    raise Exception("Po několika pokusech se nepodařilo vygenerovat unikátní obsah.")
 
 def main() -> None:
     try:
         title, story, image_path = generate_unique_animal_content()
-        logger.info(f"Title: {title}, Story first 100 characters: {story[:100]}, Image Path: {image_path}")
+        logger.info(f"Title: {title}, prvních 100 znaků příběhu: {story[:100]}, Image Path: {image_path}")
     except Exception as e:
-        logger.error(f"An error occurred in main: {e}")
+        logger.error(f"Nastala chyba: {e}")
 
 if __name__ == "__main__":
     main()
