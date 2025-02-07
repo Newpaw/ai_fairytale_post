@@ -80,11 +80,13 @@ def generate_image(animal_name: str, mood: str, title: str) -> Optional[str]:
     prompt = (
         f"Create an enchanting and detailed illustration in a plush, heartwarming style that clearly reflects a unique Czech fairy tale. "
         f"Focus on a {animal_name} that radiates a distinct air of {mood}. "
-        f"Infuse the illustration with the narrative spirit and atmosphere of the fairy tale titled '{title}'. "
+        f"Infuse the illustration with the narrative spirit and atmosphere of the fairy tale titled '{title}'."
+        "Focus on specific, visually representable elements"
+        "Describe actions and scenarios rather than abstract concepts."
+        "Avoid ambiguous language that could be interpreted as including text."
         "The animal should have soft, rounded features, expressive eyes, and a cuddly, huggable appearance. "
         "The background should enhance the overall mood with dreamy pastel hues and subtle magical elements. "
-        "Ensure that the animal's characteristics, its mood, and the story's title are all clearly represented in the composition. "
-        "Do not include any text, letters, or numbers in the image!"
+        f"Ensure that the animal's characteristics, its mood ({mood}), and the story's title are all clearly represented in the composition. "
     )
     logger.info(f"Generating image with animal name: {animal_name}, mood: {mood}, title: {title}")
 
