@@ -51,7 +51,7 @@ class WordpressClient:
         """
         url = f"{self.base_url}/wp-json/wp/v2/posts"
 
-        aigenerated_category_id = 6  # Example category ID
+        aigenerated_category_id = 17  # Example category ID
 
         data = {
             "title": title,
@@ -83,7 +83,7 @@ class WordpressClient:
 
         # 2) Create the post with the attached image as featured_media
         url = f"{self.base_url}/wp-json/wp/v2/posts"
-        aigenerated_category_id = 6
+        aigenerated_category_id = 17
 
         data = {
             "title": title,

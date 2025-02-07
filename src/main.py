@@ -2,37 +2,21 @@ import re
 import os
 import base64
 import uuid
-from ai_content_generator import generate_ai_content
+from ai_content_generator import generate_unique_animal_content
 from wordpress_client import WordpressClient
 from logger import logger
 
 def post_ai_article():
-    # (1) Get AI-generated HTML text
-    ai_text_html = generate_ai_content()
-    if not ai_text_html:
-        logger.info("No AI-generated text found.")
-        return
-    
-    # (2) Parse <h2> as post title
-    match = re.search(r"<h2>(.*?)</h2>", ai_text_html, re.IGNORECASE)
-    if match:
-        post_title = match.group(1)
-        # Remove the first occurrence of <h2>...</h2> from the HTML
-        ai_text_html = re.sub(r"<h2>.*?</h2>", "", ai_text_html, count=1, flags=re.IGNORECASE)
-    else:
-        post_title = "AI Generated Post"
 
-    # (3) Instantiate the WordPress
+    try:
+        title, story, image_path = generate_unique_animal_content()
+        logger.debug(f"Title: {title}, Story first 100 characters: {story[:100]}, Image Path: {image_path}")
+    except Exception as e:
+        logger.error(f"An error occurred in main: {e}")
+
     client = WordpressClient()
 
-    # (4) Attempt to publish the post with an image
-    image_path = os.path.join('.', 'images', 'generated_image.png')
-    
-    # Check if the file exists to avoid FileNotFoundError
-    if not os.path.exists(image_path):
-        logger.error(f"Image file not found at {image_path}.")
-        return
-    
+   
     try:
         with open(image_path, 'rb') as image_file:
             base64_bytes = base64.b64encode(image_file.read())
@@ -40,11 +24,11 @@ def post_ai_article():
             # Generate a unique file name for the image
             image_name = uuid.uuid4().hex + ".png"
             
-            # Publish post and attach the image
-            response = client.create_post_with_image(post_title, ai_text_html, base64_bytes, image_name)
+            
+            client.create_post_with_image(title, story, base64_bytes, image_name)
             
             # Optionally check `response` for success or error
-            logger.info(f"Post published with title: {post_title}")
+            logger.info(f"Post published with title: {title}")
     
     except Exception as e:
         logger.error(f"Error while publishing the post: {e}")

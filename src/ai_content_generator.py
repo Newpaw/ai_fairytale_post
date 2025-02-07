@@ -2,144 +2,203 @@ import os
 import json
 import requests
 import re
+import uuid  # Importing uuid for unique image naming
 from openai import AzureOpenAI
-from config import API_VERSION, AZURE_ENDPOINT, API_KEY, DALLE_API_VERSION, DALLE_ENDPOINT
+from config import API_VERSION, AZURE_ENDPOINT, API_KEY, DALLE_API_VERSION
 from logger import logger
+import random
+from typing import Tuple, Optional
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-JSON_FILE_PATH = os.path.join(BASE_DIR, "last_json.json")
+JSON_FILE_PATH = os.path.join(BASE_DIR, "animals.json")
+HISTORY_FILE_PATH = os.path.join(BASE_DIR, "selected_animals.json")
 
+def load_selected_animals() -> list:
+    if os.path.exists(HISTORY_FILE_PATH):
+        with open(HISTORY_FILE_PATH, 'r') as file:
+            try:
+                return json.load(file)
+            except json.JSONDecodeError:
+                logger.error("Error decoding JSON from history file.")
+                return []
+    return []
 
-def generate_image(text_promt:str):
+def save_selected_animal(animal_identifier: str) -> None:
+    selected_animals = load_selected_animals()
+    selected_animals.append(animal_identifier)
+    with open(HISTORY_FILE_PATH, 'w') as file:
+        json.dump(selected_animals, file, indent=4)
+
+def is_animal_selected(animal_identifier: str) -> bool:
+    selected_animals = load_selected_animals()
+    return animal_identifier in selected_animals
+
+def choose_random_animal() -> str:
+    with open(JSON_FILE_PATH, 'r') as file:
+        animals = json.load(file)
+    return random.choice(animals)
+
+def choose_random_mood() -> str:
+    moods = [
+        "šťastný", "smutný", "natěšený", "zvědavý", "ospalý",
+        "nadšený", "rozzlobený", "klidný", "roztržitý", "sebejistý",
+        "nervózní", "vystrašený", "zklamaný", "pyšný", "frustrovaný",
+        "spokojený", "zmatený", "nostalgický", "překvapený", "líný"
+    ]
+    return random.choice(moods)
+
+def generate_image(animal_name: str, mood: str, title: str) -> Optional[str]:
+    """
+    Generates an image using DALL-E 3 with a prompt that clearly incorporates the animal name,
+    its mood, and the story title. The prompt is in English to ensure best results.
+    """
     client = AzureOpenAI(
         api_version=DALLE_API_VERSION,
-        azure_endpoint=AZURE_ENDPOINT, 
+        azure_endpoint=AZURE_ENDPOINT,
         api_key=API_KEY
     )
-    result = client.images.generate(
-    model="dalle-e-3", # the name of your DALL-E 3 deployment
-    prompt= f"""Create a stunning and highly detailed image that best represents the following article title: {text_promt}! 
-    The image should be visually rich, vibrant, and immersive, capturing the essence of the topic with artistic depth. Use striking colors, dynamic composition, 
-    and a sense of atmosphere to convey emotion and meaning. 
-    Avoid using any text, letters, or numbers in the image – let the visuals speak for themselves.""",
-    n=1)
+    try:
+        prompt = (
+            f"Create an enchanting and detailed illustration in a plush, heartwarming style that clearly reflects a unique Czech fairy tale. "
+            f"Focus on a {animal_name} that radiates a distinct air of {mood}. "
+            f"Infuse the illustration with the narrative spirit and atmosphere of the fairy tale titled '{title}'. "
+            "The animal should have soft, rounded features, expressive eyes, and a cuddly, huggable appearance. "
+            "The background should enhance the overall mood with dreamy pastel hues and subtle magical elements. "
+            "Ensure that the animal's characteristics, its mood, and the story's title are all clearly represented in the composition. "
+            "Do not include any text, letters, or numbers in the image!"
+        )
+        result = client.images.generate(
+            model="dalle-e-3",  # Name of your DALL-E 3 deployment
+            prompt=prompt,
+            n=1
+        )
+    except Exception as e:
+        logger.error(f"Error generating image: {e}")
+        return None
 
-    json_response = json.loads(result.model_dump_json())
+    try:
+        json_response = json.loads(result.model_dump_json())
+        image_url = json_response["data"][0]["url"]
+    except (KeyError, IndexError, json.JSONDecodeError) as e:
+        logger.error(f"Error parsing image generation response: {e}")
+        return None
 
-    # Set the directory for the stored image
+    # Create the images directory safely
     image_dir = os.path.join(os.curdir, 'images')
+    os.makedirs(image_dir, exist_ok=True)
+    
+    # Generate a unique filename using uuid
+    unique_filename = f"{uuid.uuid4()}.png"
+    image_path = os.path.join(image_dir, unique_filename)
 
-    # If the directory doesn't exist, create it
-    if not os.path.isdir(image_dir):
-        os.mkdir(image_dir)
+    response = requests.get(image_url)
+    if response.status_code == 200:
+        with open(image_path, "wb") as image_file:
+            image_file.write(response.content)
+        logger.info(f"Image saved to {image_path}")
+        return image_path
+    else:
+        logger.error(f"Failed to download image. Status code: {response.status_code}")
+        return None
 
-    # Initialize the image path (note the filetype should be png)
-    image_path = os.path.join(image_dir, 'generated_image.png')
-
-    # Retrieve the generated image
-    image_url = json_response["data"][0]["url"]  # extract image URL from response
-    generated_image = requests.get(image_url).content  # download the image
-    with open(image_path, "wb") as image_file:
-        image_file.write(generated_image)
-    logger.info(f"Image saved to {image_path}")
-
-
-
-
-def generate_ai_content():
-    """
-    Generates AI content based on the latest article from a specific URL.
-    Returns the AI-generated text (answer_text) as a string.
-    Returns None if no new article text is found or if the model doesn't respond.
-    """
+def generate_post_title_and_story(animal_name: str, mood: str) -> Optional[Tuple[str, str]]:
     client = AzureOpenAI(
         api_version=API_VERSION,
-        azure_endpoint=AZURE_ENDPOINT, 
+        azure_endpoint=AZURE_ENDPOINT,
         api_key=API_KEY
     )
-    # Step 1) Prepare URL and JSON file
-    url = "https://www.youreverydayai.com/episodes/"
-    json_file = JSON_FILE_PATH
-
-    # Fetch new article text
-    new_article_text:str = orchestrate_flow(url, json_file=json_file)
-    
-    # If no new article text is found, return None
-    if not new_article_text:
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Jsi výborný český spisovatel pohádek, jehož příběhy znají děti po celém kraji. "
+                "Tvůj styl je laskavý, hravý a plný poetiky, přičemž se inspiruješ klasikou, jako jsou pohádky Karla Jaromíra Erbena či Boženy Němcové. "
+                "Máš dar vykreslit pohádkové světy tak, aby si je čtenář dokázal živě představit, a zároveň do příběhů vkládáš moudré ponaučení. "
+                "Piš vždy krásnou, bohatou češtinou a dbej na melodii vět. "
+                "Každý tvůj úkol bude znít jednoduše – dostaneš název zvířátka a na jeho základě složíš originální českou pohádku. "
+                "Tvé pohádky by měly být klasické, avšak s moderním přesahem, který osloví i dnešní čtenáře. "
+                "Používej klasickou pohádkovou strukturu: úvod (kdo, kde, proč), zápletku, dobrodružství, zkoušku a ponaučení. "
+                "Pohádka by měla mít hřejivý tón, ale občas může obsahovat jemný humor či nečekaný obrat. "
+            )
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Zvolené zvířátko: {animal_name} a pocit zvířátka je: {mood}.\n\n"
+                "Napiš krásnou českou pohádku, která bude mít:\n"
+                "Výstup musí být ve formátu HTML (pouze nadpis h2 a paragrafy)!\n"
+                "1) Název, který je poetický a lákavý\n"
+                "2) Úvod s představením hrdiny a jeho světa\n"
+                "3) Zajímavou zápletku, která obsahuje kouzlo, moudrost nebo překážku\n"
+                "4) Vyvrcholení, kde se ukáže síla charakteru hrdiny\n"
+                "5) Poučení, které děti odnese do života\n\n"
+                "Používej nádhernou obrazotvornost, bohatý jazyk a přímou řeč postav, aby byl příběh živý a poutavý."
+            )
+        }
+    ]
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4",  # or 'gpt-35-turbo'
+            messages=messages,
+            temperature=0.7,
+            max_tokens=4000
+        )
+    except Exception as e:
+        logger.error(f"Error generating story: {e}")
         return None
 
-    # Build messages for the Azure OpenAI prompt
-    messages = [
-    {
-        "role": "system",
-        "content": (
-            "Jsi zkušený a velmi vtipný český spisovatel s ostrým humorem a lehce satirickým stylem. "
-            "Piš jako kombinace Karla Čapka a Douglase Adamse – chytře, svižně, s nadhledem. "
-            "Potřebuji, abys odpovídal v čistém HTML formátu (používej např. <h2>, <p>, <ul>, <li>, ...). "
-            "Nezapomeň, že si čtenáři mají z článku něco odnést – piš s přidanou hodnotou, používej analogie a příklady z reálného světa. "
-            "Dostaneš vždy článek, který prostuduj a na jeho základě napiš, co se ve světě AI k dnešnímu dni asi děje. "
-            "Buď originální a vyhýbej se generickým nadpisům jako 'Co se děje ve světě AI'. "
-            "Místo toho piš názvy, které okamžitě zaujmou a jsou relevantní k obsahu článku a jsou krátké (maximálně 3 slova)."
-        )
-    },
-    {
-        "role": "user",
-        "content": (
-            f"Máš tady obsah nového článku ze stránky https://www.youreverydayai.com/ :\n\n"
-            f"{new_article_text}\n\n"
-            "Na základě tohoto článku napiš vtipný a zároveň informačně hodnotný text v češtině. "
-            "Výstup musí být přesně v tomto HTML formátu:\n\n"
-            "1) <h2> Nadpis shrnující hlavní myšlenku článku </h2>\n"
-            "2) <p> Krátký úvod (max 3 věty) </p>\n"
-            "3) <ul> 3-5 klíčových bodů o tom, co článek řeší, každý max 20 slov </ul>\n"
-            "4) <p> Hlavní text článku (max 6 odstavců) </p>\n"
-            "5) <p><i> Poznámka na závěr: Tento článek vytvořila AI a jedná se o humoristický obsah pouze pro studijní účely. </i></p>\n\n"
-            "Humor by měl být lehce ironický, ale ne zlomyslný. "
-            "Vyhýbej se frázím jako 'Umělá inteligence je fascinující' nebo 'Jak všichni víme'. "
-            "Piš pro chytrého čtenáře, který se chce nejen pobavit, ale i něco se dozvědět."
-        )
-    }
-]
-
-    # Request completion from Azure OpenAI
-    completion = client.chat.completions.create(
-        model="gpt-4o-mini",  # For example, 'gpt-4' or 'gpt-35-turbo'
-        messages=messages,
-        temperature=0.7,
-        max_tokens=4000
-    )
-
-    # Extract the AI-generated content (answer_text) if available
     if completion and completion.choices:
         answer_text = completion.choices[0].message.content
-        # Split the text into lines, filter out lines containing only ``` or ```html, and join them back together
-        answer_text = "\n".join(line for line in answer_text.splitlines() if line.strip() not in ("```", "```html"))
+        # Clean up the response by removing markdown code fences
+        answer_text = "\n".join(
+            line for line in answer_text.splitlines() if line.strip() not in ("```", "```html")
+        )
         title_match = re.search(r"<h2>(.*?)</h2>", answer_text, re.IGNORECASE)
-        if title_match:
-            generate_image(title_match.group(1))
-        return answer_text
+        title = title_match.group(1) if title_match else "Untitled"
+        return title, answer_text
     else:
+        logger.error("No completion received from the story generation API.")
         return None
 
+def generate_unique_animal_content(max_attempts: int = 10) -> Tuple[str, str, str]:
+    attempts = 0
+    while attempts < max_attempts:
+        animal = choose_random_animal()
+        mood = choose_random_mood()
+        # Use a separator to create a unique identifier
+        identifier = f"{animal}|{mood}"
+        if not is_animal_selected(identifier):
+            result = generate_post_title_and_story(animal, mood)
+            if not result:
+                logger.error("Story generation failed, trying another animal...")
+                attempts += 1
+                continue
+            title, story = result
 
+            # Remove the first <h2> element from the story so it's not returned twice.
+            story = re.sub(r"<h2>.*?</h2>\s*", "", story, count=1, flags=re.IGNORECASE | re.DOTALL)
+            
+            image_path = generate_image(animal, mood, title)
+            if not image_path:
+                logger.error("Image generation failed, trying another animal...")
+                attempts += 1
+                continue
 
+            save_selected_animal(identifier)
+            
+            return title, story, image_path
+        else:
+            logger.warning(f"The animal '{animal}' with mood '{mood}' has already been selected. Trying again...")
+            attempts += 1
 
+    raise Exception("No unique animal content could be generated after multiple attempts.")
 
-def main():
-    """
-    A main function that demonstrates usage of generate_ai_content().
-    It loggs the AI-generated text to stdout for quick testing.
-    """
-    answer = generate_ai_content()
-    
-    if answer:
-        logger.info("\n===== AI-Generated HTML Article =====\n")
-        logger.debug(answer)
-    else:
-        logger.info("No AI content generated or no new article available.")
-
-
-
+def main() -> None:
+    try:
+        title, story, image_path = generate_unique_animal_content()
+        logger.info(f"Title: {title}, Story first 100 characters: {story[:100]}, Image Path: {image_path}")
+    except Exception as e:
+        logger.error(f"An error occurred in main: {e}")
 
 if __name__ == "__main__":
     main()
