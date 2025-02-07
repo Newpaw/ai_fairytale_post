@@ -21,6 +21,9 @@ The `config.py` file is a crucial part of the project, containing various config
 - **WORDPRESS_USERNAME**: Username for WordPress authentication. Default is `"newpaw"`.
 - **WORDPRESS_APPLICATION_PASSWORD**: Application password for WordPress. Ensure this is kept secure.
 
+### ElevenLabs Config
+- **ELEVENLABS_API_KEY**: The API key for authentication. Ensure this is kept secure.
+
 ### Logging Configuration
 
 - **LOG_LEVEL**: Sets the logging level. Default is `logging.INFO`.
@@ -40,6 +43,8 @@ DALLE_ENDPOINT = "https://aoai-aicentre-dev-004.openai.azure.com/openai/deployme
 WORDPRESS_BASE_URL = "https://yourwordpresssite.com"
 WORDPRESS_USERNAME = "yourusername"
 WORDPRESS_APPLICATION_PASSWORD = "your-secure-application-password"
+
+ELEVENLABS_API_KEY = "your-secure-api-key"
 
 LOG_LEVEL = logging.INFO
 ```
