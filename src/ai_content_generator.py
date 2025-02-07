@@ -8,6 +8,10 @@ from config import API_VERSION, AZURE_ENDPOINT, API_KEY, DALLE_API_VERSION
 from logger import logger
 import random
 from typing import Tuple, Optional
+from deep_translator import GoogleTranslator
+
+# Use any translator you like, in this example GoogleTranslator
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_FILE_PATH = os.path.join(BASE_DIR, "animals.json")
@@ -77,18 +81,25 @@ def generate_image(animal_name: str, mood: str, title: str) -> Optional[str]:
     client = AzureOpenAI(
         api_version=DALLE_API_VERSION, azure_endpoint=AZURE_ENDPOINT, api_key=API_KEY
     )
+    en_animal_name = GoogleTranslator(source="cs", target="en").translate(animal_name)
+    en_mood = GoogleTranslator(source="cs", target="en").translate(mood)
+    en_title = GoogleTranslator(source="cs", target="en").translate(title)
+
     prompt = (
         f"Create an enchanting and detailed illustration in a plush, heartwarming style that clearly reflects a unique Czech fairy tale. "
-        f"Focus on a {animal_name} that radiates a distinct air of {mood}. "
-        f"Infuse the illustration with the narrative spirit and atmosphere of the fairy tale titled '{title}'."
+        f"Focus on a {en_animal_name} that radiates a distinct air of {en_mood}. "
+        f"Infuse the illustration with the narrative spirit and atmosphere of the fairy tale titled '{en_title}'."
         "Focus on specific, visually representable elements"
         "Describe actions and scenarios rather than abstract concepts."
         "Avoid ambiguous language that could be interpreted as including text."
         "The animal should have soft, rounded features, expressive eyes, and a cuddly, huggable appearance. "
         "The background should enhance the overall mood with dreamy pastel hues and subtle magical elements. "
-        f"Ensure that the animal's characteristics, its mood ({mood}), and the story's title are all clearly represented in the composition. "
+        f"Ensure that the animal's characteristics, its mood ({en_mood}), and the story's title are all clearly represented in the composition."
+        "The final image must not include any text, letters, numbers, or symbols anywhere in the composition!"
     )
-    logger.info(f"Generating image with animal name: {animal_name}, mood: {mood}, title: {title}")
+    logger.info(
+        f"Generating image with animal name: {animal_name or ''}/{en_animal_name or ''}, mood: {mood or ''}/{en_mood or ''}, title: {title or ''}/{en_title or ''}"
+    )
 
     try:
         result = client.images.generate(model="dalle-e-3", prompt=prompt, n=1)
