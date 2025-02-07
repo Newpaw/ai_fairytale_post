@@ -19,7 +19,7 @@ def combine_content(story: str, audio_html: str) -> str:
     :param audio_html: The HTML snippet for the audio player.
     :return: The combined content.
     """
-    return story + "\n" + audio_html
+    return audio_html + "\n" +  story 
 
 def cleanup_file(file_path: str):
     """

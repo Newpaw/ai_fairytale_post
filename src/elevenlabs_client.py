@@ -1,7 +1,9 @@
 import os
 import uuid
+import random
 from elevenlabs.client import ElevenLabs
 from config import ELEVENLABS_API_KEY
+from logger import logger
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -9,16 +11,21 @@ client = ElevenLabs(
     api_key=ELEVENLABS_API_KEY,
 )
 
-def generate_audio(text: str) -> str:
+
+def generate_audio(text: str, model_id: str = "eleven_flash_v2_5") -> str:
     """
     Vygeneruje audio z textu pomocí ElevenLabs API, uloží ho s náhodným názvem (UUID)
     a vrátí absolutní cestu k souboru.
     """
+    voice_dict = {"Klára": "5dDTFgDe7eMVxZHZObuz", "Jan": "Eqzdg80VS88UO6BmC97d"}
+
+    selected_name, voice_id = random.choice(list(voice_dict.items()))
+    logger.info(f"Vybrán: {selected_name} s voice ID: {voice_id}")
     audio_generator = client.text_to_speech.convert(
-        voice_id="Eqzdg80VS88UO6BmC97d",
+        voice_id=voice_id,
         output_format="mp3_44100_128",
         text=text,
-        model_id="eleven_flash_v2_5",
+        model_id=model_id,
     )
 
     # Uložíme audio do složky "audio_files" ve stejném adresáři jako tento skript
@@ -31,6 +38,7 @@ def generate_audio(text: str) -> str:
         for chunk in audio_generator:
             f.write(chunk)
     return file_path
+
 
 if __name__ == "__main__":
     sample_text = "Ahoj, jak se máš?"

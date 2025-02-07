@@ -46,7 +46,7 @@ def post_ai_article():
             audio_filename = uuid.uuid4().hex + ".mp3"
             audio_attachment_id = client.upload_audio(base64_audio, audio_filename)
             audio_url = client.get_media_url(audio_attachment_id)
-            audio_html = f'<audio controls src="{audio_url}"></audio>'
+            audio_html = f'[audio src="{audio_url}"]'
             logger.info(f"Audio uploaded, URL: {audio_url}")
     except Exception as e:
         logger.error(f"Error uploading audio: {e}")
