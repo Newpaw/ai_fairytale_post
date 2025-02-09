@@ -46,6 +46,7 @@ def upload_video_to_youtube(
     category_id: str = "22",
     privacy_status: str = "public"
 ) -> str:
+
     # Zajistíme, že klientský soubor bude hledán relativně k tomuto skriptu
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     CLIENT_SECRETS_FILE = os.path.join(BASE_DIR, "client_secrets.json")
@@ -61,8 +62,15 @@ def upload_video_to_youtube(
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FILE, SCOPES)
-            # Použijeme run_console(), aby se autentizace provedla přes konzoli (vhodné pro headless prostředí)
-            creds = flow.run_console()
+            try:
+                # Pokusíme se použít run_console() (pro headless prostředí)
+                creds = flow.run_console()
+            except AttributeError:
+                # Fallback: manuálně zobrazíme URL a vyzveme uživatele k zadání kódu
+                auth_url, _ = flow.authorization_url(prompt='consent')
+                print("Go to the following URL:\n", auth_url)
+                code = input("Enter the authorization code: ")
+                creds = flow.fetch_token(code=code)
         with open(CREDENTIALS_PICKLE_FILE, "wb") as token:
             pickle.dump(creds, token)
 
