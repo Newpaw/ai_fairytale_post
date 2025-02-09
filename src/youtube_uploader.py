@@ -49,9 +49,12 @@ def upload_video_to_youtube(
     
     Requires proper OAuth2 credentials. The function returns the uploaded video's ID.
     """
-    # OAuth2 configuration
-    CLIENT_SECRETS_FILE = "client_secrets.json"          # your client secrets JSON file
-    CREDENTIALS_PICKLE_FILE = "youtube_credentials.pickle" # token will be stored here
+    # Determine the directory of the current script to ensure correct file paths when running from cron.
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # OAuth2 configuration with absolute paths
+    CLIENT_SECRETS_FILE = os.path.join(base_dir, "client_secrets.json")
+    CREDENTIALS_PICKLE_FILE = os.path.join(base_dir, "youtube_credentials.pickle")
     SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 
     creds = None
