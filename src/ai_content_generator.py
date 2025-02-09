@@ -73,6 +73,24 @@ def choose_random_mood() -> str:
     return random.choice(moods)
 
 
+def safe_translate(text, source_lang="cs", target_lang="en"):
+    """
+    Safely translates text from source_lang to target_lang.
+    If translation fails or returns an empty result, returns the original text.
+    """
+    try:
+        translator = GoogleTranslator(source=source_lang, target=target_lang)
+        translated = translator.translate(text)
+        # If the translation result is empty, fallback to the original text.
+        if not translated:
+            logger.warning(f"Translation failed for text: {text}")
+            return text
+        return translated
+    except Exception:
+        # If any error occurs during translation, fallback to the original text.
+        return text
+
+
 def generate_image(animal_name: str, mood: str, title: str) -> Optional[str]:
     """
     Vygeneruje obrázek pomocí DALL-E 3 s promptem, který obsahuje jméno zvířete,
@@ -81,9 +99,9 @@ def generate_image(animal_name: str, mood: str, title: str) -> Optional[str]:
     client = AzureOpenAI(
         api_version=DALLE_API_VERSION, azure_endpoint=AZURE_ENDPOINT, api_key=API_KEY
     )
-    en_animal_name = GoogleTranslator(source="cs", target="en").translate(animal_name)
-    en_mood = GoogleTranslator(source="cs", target="en").translate(mood)
-    en_title = GoogleTranslator(source="cs", target="en").translate(title)
+    en_animal_name = safe_translate(animal_name)
+    en_mood = safe_translate(mood)
+    en_title = safe_translate(title)
 
     prompt = (
         f"Create an enchanting and detailed illustration in a plush, heartwarming style that clearly reflects a unique Czech fairy tale. "
