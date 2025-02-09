@@ -12,3 +12,5 @@ wheels/
 config.py
 
 selected_animals.json
+
+client_secrets.json
