@@ -3,77 +3,78 @@ import json
 import requests
 import re
 import uuid
-from openai import AzureOpenAI
-from config import API_VERSION, AZURE_ENDPOINT, API_KEY, DALLE_API_VERSION
-from logger import logger
 import random
 from typing import Tuple, Optional
 from deep_translator import GoogleTranslator
+from openai import AzureOpenAI
+from config import API_VERSION, AZURE_ENDPOINT, API_KEY, DALLE_API_VERSION
+from logger import logger
 
-# Use any translator you like, in this example GoogleTranslator
-
-
+# Define base directory and file paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_FILE_PATH = os.path.join(BASE_DIR, "animals.json")
 HISTORY_FILE_PATH = os.path.join(BASE_DIR, "selected_animals.json")
 
 
 def load_selected_animals() -> list:
+    """
+    Loads the list of selected animal identifiers from the history file.
+    Returns an empty list if the file does not exist or if there's a JSON decode error.
+    """
     if os.path.exists(HISTORY_FILE_PATH):
-        with open(HISTORY_FILE_PATH, "r") as file:
-            try:
+        try:
+            with open(HISTORY_FILE_PATH, "r", encoding="utf-8") as file:
                 return json.load(file)
-            except json.JSONDecodeError:
-                logger.error("Chyba při čtení JSON ze souboru historie.")
-                return []
+        except json.JSONDecodeError:
+            logger.error("Error reading JSON from history file.")
+            return []
     return []
 
 
 def save_selected_animal(animal_identifier: str) -> None:
+    """
+    Saves a new animal identifier to the history file.
+    """
     selected_animals = load_selected_animals()
     selected_animals.append(animal_identifier)
-    with open(HISTORY_FILE_PATH, "w") as file:
+    with open(HISTORY_FILE_PATH, "w", encoding="utf-8") as file:
         json.dump(selected_animals, file, indent=4)
 
 
 def is_animal_selected(animal_identifier: str) -> bool:
+    """
+    Checks if an animal identifier has already been selected.
+    """
     selected_animals = load_selected_animals()
     return animal_identifier in selected_animals
 
 
 def choose_random_animal() -> str:
-    with open(JSON_FILE_PATH, "r") as file:
+    """
+    Chooses a random animal from the animals JSON file.
+    Raises an exception if the file is empty or missing.
+    """
+    with open(JSON_FILE_PATH, "r", encoding="utf-8") as file:
         animals = json.load(file)
+    if not animals:
+        raise ValueError("No animals found in the JSON file.")
     return random.choice(animals)
 
 
 def choose_random_mood() -> str:
+    """
+    Returns a random mood from a predefined list.
+    """
     moods = [
-        "šťastný",
-        "smutný",
-        "natěšený",
-        "zvědavý",
-        "ospalý",
-        "nadšený",
-        "rozzlobený",
-        "klidný",
-        "roztržitý",
-        "sebejistý",
-        "nervózní",
-        "vystrašený",
-        "zklamaný",
-        "pyšný",
-        "frustrovaný",
-        "spokojený",
-        "zmatený",
-        "nostalgický",
-        "překvapený",
-        "líný",
+        "šťastný", "smutný", "natěšený", "zvědavý", "ospalý", "nadšený",
+        "rozzlobený", "klidný", "roztržitý", "sebejistý", "nervózní",
+        "vystrašený", "zklamaný", "pyšný", "frustrovaný", "spokojený",
+        "zmatený", "nostalgický", "překvapený", "líný",
     ]
     return random.choice(moods)
 
 
-def safe_translate(text, source_lang="cs", target_lang="en"):
+def safe_translate(text: str, source_lang: str = "cs", target_lang: str = "en") -> str:
     """
     Safely translates text from source_lang to target_lang.
     If translation fails or returns an empty result, returns the original text.
@@ -81,20 +82,19 @@ def safe_translate(text, source_lang="cs", target_lang="en"):
     try:
         translator = GoogleTranslator(source=source_lang, target=target_lang)
         translated = translator.translate(text)
-        # If the translation result is empty, fallback to the original text.
         if not translated:
-            logger.warning(f"Translation failed for text: {text}")
+            logger.warning(f"Translation returned empty for text: {text}")
             return text
         return translated
-    except Exception:
-        # If any error occurs during translation, fallback to the original text.
+    except Exception as e:
+        logger.error(f"Translation error for text '{text}': {e}")
         return text
 
 
 def generate_image(animal_name: str, mood: str, title: str) -> Optional[str]:
     """
-    Vygeneruje obrázek pomocí DALL-E 3 s promptem, který obsahuje jméno zvířete,
-    jeho náladu a název příběhu. Vrátí absolutní cestu k uloženému obrázku.
+    Generates an image using DALL-E 3 with a prompt containing the animal name,
+    its mood, and the story title. Returns the absolute path to the saved image.
     """
     client = AzureOpenAI(
         api_version=DALLE_API_VERSION, azure_endpoint=AZURE_ENDPOINT, api_key=API_KEY
@@ -106,17 +106,17 @@ def generate_image(animal_name: str, mood: str, title: str) -> Optional[str]:
     prompt = (
         f"Create an enchanting and detailed illustration in a plush, heartwarming style that clearly reflects a unique Czech fairy tale. "
         f"Focus on a {en_animal_name} that radiates a distinct air of {en_mood}. "
-        f"Infuse the illustration with the narrative spirit and atmosphere of the fairy tale titled '{en_title}'."
-        "Focus on specific, visually representable elements"
-        "Describe actions and scenarios rather than abstract concepts."
-        "Avoid ambiguous language that could be interpreted as including text."
+        f"Infuse the illustration with the narrative spirit and atmosphere of the fairy tale titled '{en_title}'. "
+        "Focus on specific, visually representable elements. "
+        "Describe actions and scenarios rather than abstract concepts. "
+        "Avoid ambiguous language that could be interpreted as including text. "
         "The animal should have soft, rounded features, expressive eyes, and a cuddly, huggable appearance. "
         "The background should enhance the overall mood with dreamy pastel hues and subtle magical elements. "
-        f"Ensure that the animal's characteristics, its mood ({en_mood}), and the story's title are all clearly represented in the composition."
+        f"Ensure that the animal's characteristics, its mood ({en_mood}), and the story's title are all clearly represented in the composition. "
         "The final image must not include any text, letters, numbers, or symbols anywhere in the composition!"
     )
     logger.info(
-        f"Generating image with animal name: {animal_name or ''}/{en_animal_name or ''}, mood: {mood or ''}/{en_mood or ''}, title: {title or ''}/{en_title or ''}"
+        f"Generating image with animal name: {animal_name} / {en_animal_name}, mood: {mood} / {en_mood}, title: {title} / {en_title}"
     )
 
     try:
@@ -130,8 +130,10 @@ def generate_image(animal_name: str, mood: str, title: str) -> Optional[str]:
     try:
         if hasattr(result, "model_dump_json"):
             result_json = json.loads(result.model_dump_json())
-        else:
+        elif isinstance(result, dict):
             result_json = result
+        else:
+            raise ValueError("Unexpected result format from image generation.")
         logger.debug(f"Parsed JSON response: {result_json}")
         image_url = result_json["data"][0]["url"]
         logger.info(f"Extracted image URL: {image_url}")
@@ -146,23 +148,23 @@ def generate_image(animal_name: str, mood: str, title: str) -> Optional[str]:
 
     try:
         response = requests.get(image_url)
+        response.raise_for_status()
     except Exception as e:
         logger.error(f"Error downloading image: {e}")
         return None
 
-    if response.status_code == 200:
-        with open(image_path, "wb") as image_file:
-            image_file.write(response.content)
-        logger.info(f"Image saved to {image_path}")
-        return image_path
-    else:
-        logger.error(f"Failed to download image. Status code: {response.status_code}")
-        return None
+    with open(image_path, "wb") as image_file:
+        image_file.write(response.content)
+    logger.info(f"Image saved to {image_path}")
+    return image_path
 
 
-def generate_post_title_and_story(
-    animal_name: str, mood: str
-) -> Optional[Tuple[str, str]]:
+def generate_post_title_and_story(animal_name: str, mood: str) -> Optional[Tuple[str, str]]:
+    """
+    Generates a post title and story using a chat completion API.
+    The story is expected to be in HTML format with an <h2> title and paragraphs.
+    Returns a tuple of (title, story) if successful.
+    """
     client = AzureOpenAI(
         api_version=API_VERSION, azure_endpoint=AZURE_ENDPOINT, api_key=API_KEY
     )
@@ -170,25 +172,24 @@ def generate_post_title_and_story(
         {
             "role": "system",
             "content": (
-                "Jsi úžasný český spisovatel pohádek pro děti. Tvé příběhy jsou jednoduché, kouzelné a snadno pochopitelné pro malé čtenáře. "
-                "Píšeš přátelským a hravým jazykem, který vytváří jasný a živý obraz pohádkového světa. "
-                "Tvůj styl je srozumitelný, melodický a přímý – každé slovo nese radost a dobrodružství. "
-                "Dostaneš jednoduchý úkol: na základě názvu zvířátka vytvoříš originální českou pohádku, která bude mít jasnou strukturu s úvodem, zápletkou, dobrodružstvím, vyvrcholením a jednoduchým ponaučením. "
-                "Dbáš na to, aby byl děj poutavý a jazyk přístupný i pro ty nejmenší."
+                "You are an amazing Czech children's fairy tale writer. Your stories are simple, magical, and easy to understand for young readers. "
+                "You write in a friendly and playful language that creates a clear and vivid picture of a fairy tale world. "
+                "Your style is comprehensible, melodic, and straightforward – every word carries joy and adventure. "
+                "Your task: based on the name of the animal, create an original Czech fairy tale with a clear structure including an introduction, conflict, adventure, climax, and a simple moral. "
+                "Ensure that the plot is engaging and the language accessible even for the youngest."
             ),
         },
         {
             "role": "user",
             "content": (
-                f"Zvolené zvířátko: {animal_name} a jeho nálada je: {mood}.\n\n"
-                "Napiš jednoduchou a kouzelnou českou pohádku, která bude mít:\n"
-                "Výstup musí být ve formátu HTML (pouze nadpis h2 a odstavce)!\n"
-                "1) Krásný a lákavý název\n"
-                "2) Úvod, který představí hrdinu a jeho kouzelný svět\n"
-                "3) Zápletku s kouzlem, dobrodružstvím nebo překážkou\n"
-                "4) Vyvrcholení, kde se ukáže, jak hrdina překoná obtíže\n"
-                "5) Jednoduché a srozumitelné ponaučení, které si děti snadno zapamatují\n\n"
-                "Používej jednoduchý, ale živý jazyk, krátké věty a přímou řeč, aby byl příběh poutavý a snadno čitelný pro malé děti."
+                f"Chosen animal: {animal_name} with mood: {mood}.\n\n"
+                "Write a simple and magical Czech fairy tale in HTML format (only an <h2> title and paragraphs) that includes:\n"
+                "1) A beautiful and enticing title\n"
+                "2) An introduction presenting the hero and their magical world\n"
+                "3) A conflict involving magic, adventure, or an obstacle\n"
+                "4) A climax where the hero overcomes the difficulties\n"
+                "5) A simple and understandable moral that children can easily remember\n\n"
+                "Use simple yet lively language, short sentences, and direct speech to ensure the story is engaging and easy to read for small children."
             ),
         },
     ]
@@ -203,10 +204,9 @@ def generate_post_title_and_story(
 
     if completion and completion.choices:
         answer_text = completion.choices[0].message.content
+        # Remove code block markers if present
         answer_text = "\n".join(
-            line
-            for line in answer_text.splitlines()
-            if line.strip() not in ("```", "```html")
+            line for line in answer_text.splitlines() if line.strip() not in ("```", "```html")
         )
         title_match = re.search(r"<h2>(.*?)</h2>", answer_text, re.IGNORECASE)
         title = title_match.group(1) if title_match else "Untitled"
@@ -217,6 +217,11 @@ def generate_post_title_and_story(
 
 
 def generate_unique_animal_content(max_attempts: int = 10) -> Tuple[str, str, str]:
+    """
+    Generates unique animal content by selecting a random animal and mood, ensuring
+    that the combination has not been used before. Returns a tuple of (title, story, image_path).
+    Raises an exception if unique content cannot be generated within max_attempts.
+    """
     attempts = 0
     while attempts < max_attempts:
         animal = choose_random_animal()
@@ -225,38 +230,35 @@ def generate_unique_animal_content(max_attempts: int = 10) -> Tuple[str, str, st
         if not is_animal_selected(identifier):
             result = generate_post_title_and_story(animal, mood)
             if not result:
-                logger.error("Generování příběhu selhalo, zkouším další zvíře...")
+                logger.error("Story generation failed, trying another animal...")
                 attempts += 1
                 continue
             title, story = result
-            # Odstraníme první <h2> (název) z příběhu, aby se neopakoval
-            story = re.sub(
-                r"<h2>.*?</h2>\s*", "", story, count=1, flags=re.IGNORECASE | re.DOTALL
-            )
+            # Remove the first <h2> title from the story to avoid duplication
+            story = re.sub(r"<h2>.*?</h2>\s*", "", story, count=1, flags=re.IGNORECASE | re.DOTALL)
             image_path = generate_image(animal, mood, title)
             if not image_path:
-                logger.error("Generování obrázku selhalo, zkouším další zvíře...")
+                logger.error("Image generation failed, trying another animal...")
                 attempts += 1
                 continue
             save_selected_animal(identifier)
             return title, story, image_path
         else:
-            logger.warning(
-                f"Zvíře '{animal}' s náladou '{mood}' už bylo vybráno. Zkouším další..."
-            )
+            logger.warning(f"Animal '{animal}' with mood '{mood}' has already been selected. Trying another...")
             attempts += 1
 
-    raise Exception("Po několika pokusech se nepodařilo vygenerovat unikátní obsah.")
+    raise Exception("Failed to generate unique content after several attempts.")
 
 
 def main() -> None:
+    """
+    Main function to generate the unique animal content and log the results.
+    """
     try:
         title, story, image_path = generate_unique_animal_content()
-        logger.info(
-            f"Title: {title}, prvních 100 znaků příběhu: {story[:100]}, Image Path: {image_path}"
-        )
+        logger.info(f"Title: {title}, first 100 characters of story: {story[:100]}, Image Path: {image_path}")
     except Exception as e:
-        logger.error(f"Nastala chyba: {e}")
+        logger.error(f"An error occurred: {e}")
 
 
 if __name__ == "__main__":
