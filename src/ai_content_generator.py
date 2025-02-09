@@ -217,11 +217,6 @@ def generate_post_title_and_story(animal_name: str, mood: str) -> Optional[Tuple
 
 
 def generate_unique_animal_content(max_attempts: int = 10) -> Tuple[str, str, str]:
-    """
-    Generates unique animal content by selecting a random animal and mood, ensuring
-    that the combination has not been used before. Returns a tuple of (title, story, image_path).
-    Raises an exception if unique content cannot be generated within max_attempts.
-    """
     attempts = 0
     while attempts < max_attempts:
         animal = choose_random_animal()
@@ -236,6 +231,10 @@ def generate_unique_animal_content(max_attempts: int = 10) -> Tuple[str, str, st
             title, story = result
             # Remove the first <h2> title from the story to avoid duplication
             story = re.sub(r"<h2>.*?</h2>\s*", "", story, count=1, flags=re.IGNORECASE | re.DOTALL)
+            
+            # NEW STEP: Validate and correct the story using the LLM quality control
+            story = validate_and_correct_output(story)
+            
             image_path = generate_image(animal, mood, title)
             if not image_path:
                 logger.error("Image generation failed, trying another animal...")
@@ -248,6 +247,49 @@ def generate_unique_animal_content(max_attempts: int = 10) -> Tuple[str, str, st
             attempts += 1
 
     raise Exception("Failed to generate unique content after several attempts.")
+
+
+def validate_and_correct_output(text: str) -> str:
+    """
+    Uses an LLM to validate and correct the given text for quality, clarity, grammar,
+    narrative coherence, adherence to the concept, entertainment value, and smooth flow.
+    If the correction fails, the original text is returned.
+    """
+    client = AzureOpenAI(api_version=API_VERSION, azure_endpoint=AZURE_ENDPOINT, api_key=API_KEY)
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a master editor and storyteller with a keen eye for detail and narrative integrity. "
+                "Your task is to review the provided text and ensure it is error-free, stylistically polished, and logically coherent from beginning to end. "
+                "Make sure the text strictly adheres to the intended concept, is engaging and entertaining, and flows smoothly. "
+                "Revise the text accordingly and return only the corrected version in Czech."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Please review the following story and correct any issues related to grammar, style, narrative coherence, "
+                f"concept adherence, entertainment value, and smooth flow:\n\n{text}"
+            ),
+        },
+    ]
+    
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4", messages=messages, temperature=0.3, max_tokens=4000
+        )
+        if completion and completion.choices:
+            corrected_text = completion.choices[0].message.content.strip()
+            return corrected_text if corrected_text else text
+        else:
+            logger.warning("No correction received; returning original text.")
+            return text
+    except Exception as e:
+        logger.error(f"Error during output validation: {e}")
+        return text
+
+
 
 
 def main() -> None:
