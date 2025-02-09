@@ -8,7 +8,6 @@ from googleapiclient.http import MediaFileUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -47,15 +46,10 @@ def upload_video_to_youtube(
     category_id: str = "22",
     privacy_status: str = "public"
 ) -> str:
-    """
-    Uploads a video to YouTube using the YouTube Data API.
-
-    Requires proper OAuth2 credentials. The function returns the uploaded video's ID.
-    """
-    # OAuth2 configuration
+    # Zajistíme, že klientský soubor bude hledán relativně k tomuto skriptu
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     CLIENT_SECRETS_FILE = os.path.join(BASE_DIR, "client_secrets.json")
-    CREDENTIALS_PICKLE_FILE = "youtube_credentials.pickle"  # token will be stored here
+    CREDENTIALS_PICKLE_FILE = os.path.join(BASE_DIR, "youtube_credentials.pickle")
     SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 
     creds = None
@@ -66,28 +60,27 @@ def upload_video_to_youtube(
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CLIENT_SECRETS_FILE, SCOPES)
-            creds = flow.run_local_server(port=0)
+            flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FILE, SCOPES)
+            # Použijeme run_console(), aby se autentizace provedla přes konzoli (vhodné pro headless prostředí)
+            creds = flow.run_console()
         with open(CREDENTIALS_PICKLE_FILE, "wb") as token:
             pickle.dump(creds, token)
 
     youtube = build("youtube", "v3", credentials=creds)
 
-    body = dict(
-        snippet=dict(
-            title=title,
-            description=description,
-            tags=tags,
-            categoryId=category_id
-        ),
-        status=dict(
-            privacyStatus=privacy_status
-        )
-    )
+    body = {
+        "snippet": {
+            "title": title,
+            "description": description,
+            "tags": tags,
+            "categoryId": category_id
+        },
+        "status": {
+            "privacyStatus": privacy_status
+        }
+    }
 
-    media = MediaFileUpload(video_path, chunksize=-1,
-                            resumable=True, mimetype="video/mp4")
+    media = MediaFileUpload(video_path, chunksize=-1, resumable=True, mimetype="video/mp4")
     request = youtube.videos().insert(
         part="snippet,status",
         body=body,
@@ -98,7 +91,6 @@ def upload_video_to_youtube(
     while response is None:
         status, response = request.next_chunk()
         if status:
-            logger.info(
-                f"Uploading video: {int(status.progress() * 100)}% complete")
+            logger.info(f"Uploading video: {int(status.progress() * 100)}% complete")
     logger.info("Video upload complete!")
     return response.get("id")
