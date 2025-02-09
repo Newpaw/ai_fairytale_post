@@ -10,11 +10,10 @@ from google.auth.transport.requests import Request
 
 logger = logging.getLogger(__name__)
 
-
 def create_video_from_image_and_audio(image_path: str, audio_path: str, output_video_path: str) -> None:
     """
     Creates a video by combining a static image with an audio file using ffmpeg.
-
+    
     The image will be displayed throughout the video while the audio plays in the background.
     """
     command = [
@@ -37,20 +36,22 @@ def create_video_from_image_and_audio(image_path: str, audio_path: str, output_v
         logger.error(f"Error creating video: {e}")
         raise
 
-
 def upload_video_to_youtube(
-    video_path: str,
-    title: str,
-    description: str,
-    tags: list,
-    category_id: str = "22",
+    video_path: str, 
+    title: str, 
+    description: str, 
+    tags: list, 
+    category_id: str = "22", 
     privacy_status: str = "public"
 ) -> str:
-
-    # Zajistíme, že klientský soubor bude hledán relativně k tomuto skriptu
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    CLIENT_SECRETS_FILE = os.path.join(BASE_DIR, "client_secrets.json")
-    CREDENTIALS_PICKLE_FILE = os.path.join(BASE_DIR, "youtube_credentials.pickle")
+    """
+    Uploads a video to YouTube using the YouTube Data API.
+    
+    Requires proper OAuth2 credentials. The function returns the uploaded video's ID.
+    """
+    # OAuth2 configuration
+    CLIENT_SECRETS_FILE = "client_secrets.json"          # your client secrets JSON file
+    CREDENTIALS_PICKLE_FILE = "youtube_credentials.pickle" # token will be stored here
     SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 
     creds = None
@@ -62,32 +63,23 @@ def upload_video_to_youtube(
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FILE, SCOPES)
-            try:
-                # Zkusíme použít run_console()
-                creds = flow.run_console()
-            except AttributeError:
-                # Fallback: vygenerujeme URL, požádáme uživatele o zadání kódu, a nastavíme credentials
-                auth_url, _ = flow.authorization_url(prompt='consent')
-                print("Go to the following URL:\n", auth_url)
-                code = input("Enter the authorization code: ")
-                flow.fetch_token(code=code)
-                creds = flow.credentials
+            creds = flow.run_local_server(port=0)
         with open(CREDENTIALS_PICKLE_FILE, "wb") as token:
             pickle.dump(creds, token)
 
     youtube = build("youtube", "v3", credentials=creds)
 
-    body = {
-        "snippet": {
-            "title": title,
-            "description": description,
-            "tags": tags,
-            "categoryId": category_id
-        },
-        "status": {
-            "privacyStatus": privacy_status
-        }
-    }
+    body = dict(
+        snippet=dict(
+            title=title,
+            description=description,
+            tags=tags,
+            categoryId=category_id
+        ),
+        status=dict(
+            privacyStatus=privacy_status
+        )
+    )
 
     media = MediaFileUpload(video_path, chunksize=-1, resumable=True, mimetype="video/mp4")
     request = youtube.videos().insert(
