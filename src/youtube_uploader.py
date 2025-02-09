@@ -63,14 +63,15 @@ def upload_video_to_youtube(
         else:
             flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FILE, SCOPES)
             try:
-                # Pokusíme se použít run_console() (pro headless prostředí)
+                # Zkusíme použít run_console()
                 creds = flow.run_console()
             except AttributeError:
-                # Fallback: manuálně zobrazíme URL a vyzveme uživatele k zadání kódu
+                # Fallback: vygenerujeme URL, požádáme uživatele o zadání kódu, a nastavíme credentials
                 auth_url, _ = flow.authorization_url(prompt='consent')
                 print("Go to the following URL:\n", auth_url)
                 code = input("Enter the authorization code: ")
-                creds = flow.fetch_token(code=code)
+                flow.fetch_token(code=code)
+                creds = flow.credentials
         with open(CREDENTIALS_PICKLE_FILE, "wb") as token:
             pickle.dump(creds, token)
 
