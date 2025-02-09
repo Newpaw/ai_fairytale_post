@@ -15,12 +15,14 @@ def create_video_from_image_and_audio(image_path: str, audio_path: str, output_v
     Creates a video by combining a static image with an audio file using ffmpeg.
     
     The image will be displayed throughout the video while the audio plays in the background.
+    The output video is forced to a resolution of 1920x1080 to ensure it is uploaded as a normal video.
     """
     command = [
         "ffmpeg", "-y",
         "-loop", "1",
         "-i", image_path,
         "-i", audio_path,
+        "-vf", "scale=1920:1080",  # Force 16:9 resolution to avoid YouTube Shorts classification
         "-c:v", "libx264",
         "-tune", "stillimage",
         "-c:a", "aac",
@@ -47,7 +49,8 @@ def upload_video_to_youtube(
     """
     Uploads a video to YouTube using the YouTube Data API.
     
-    Requires proper OAuth2 credentials. The function returns the uploaded video's ID.
+    The video is uploaded as a normal video and marked as made for kids.
+    The description is automatically appended with a captivating message about enchanting fairy tales for children.
     """
     # Determine the directory of the current script to ensure correct file paths when running from cron.
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -72,6 +75,10 @@ def upload_video_to_youtube(
 
     youtube = build("youtube", "v3", credentials=creds)
 
+    # Append engaging info to the description about fairy tales for kids
+    description += ("\n\nDiscover a world of magic and adventure with our captivating fairy tales for kids. "
+                    "Each story is crafted to spark imagination and bring joy to young hearts!")
+
     body = dict(
         snippet=dict(
             title=title,
@@ -80,7 +87,8 @@ def upload_video_to_youtube(
             categoryId=category_id
         ),
         status=dict(
-            privacyStatus=privacy_status
+            privacyStatus=privacy_status,
+            selfDeclaredMadeForKids=True  # Mark the video as made for kids
         )
     )
 
