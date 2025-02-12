@@ -1,8 +1,24 @@
 import base64
 import requests
+import time
 from requests.auth import HTTPBasicAuth
 from config import WORDPRESS_BASE_URL, WORDPRESS_USERNAME, WORDPRESS_APPLICATION_PASSWORD
 from logger import logger
+
+def retry_request(request_func, retries=3, delay=2, **kwargs):
+    """
+    Generic retry function for HTTP requests.
+    
+    Tries to execute 'request_func' with the given keyword arguments.
+    Accepts response status codes 200 and 201 as success, jinak čeká 'delay' sekund a opakuje.
+    """
+    for attempt in range(1, retries + 1):
+        response = request_func(**kwargs)
+        if response.status_code in (200, 201):
+            return response
+        logger.error(f"Attempt {attempt}: Request failed with status code: {response.status_code}")
+        time.sleep(delay)
+    raise RuntimeError(f"Operation failed after {retries} retries.")
 
 class WordpressClient:
     """Synchronní komunikace s WordPress pomocí REST API."""
@@ -21,7 +37,15 @@ class WordpressClient:
             'Content-Disposition': f'attachment; filename={filename}',
             'Content-Type': 'image/jpeg'
         }
-        response = requests.post(url, auth=self.auth, headers=headers, data=image_data)
+        response = retry_request(
+            requests.post,
+            retries=3,
+            delay=2,
+            url=url,
+            auth=self.auth,
+            headers=headers,
+            data=image_data
+        )
         if response.status_code == 201:
             attachment_id = response.json().get('id')
             logger.info(f"Obrázek nahrán, ID: {attachment_id}")
@@ -41,7 +65,15 @@ class WordpressClient:
             'Content-Disposition': f'attachment; filename={filename}',
             'Content-Type': 'audio/mpeg'
         }
-        response = requests.post(url, auth=self.auth, headers=headers, data=audio_data)
+        response = retry_request(
+            requests.post,
+            retries=3,
+            delay=2,
+            url=url,
+            auth=self.auth,
+            headers=headers,
+            data=audio_data
+        )
         if response.status_code == 201:
             attachment_id = response.json().get('id')
             logger.info(f"Audio nahráno, ID: {attachment_id}")
@@ -51,18 +83,23 @@ class WordpressClient:
             logger.error(response.text)
             raise RuntimeError(f"Audio upload failed with status code: {response.status_code}")
 
-    def get_media_url(self, attachment_id: int) -> str:
+    def get_media_url(self, attachment_id: int, retries: int = 3, delay: int = 2) -> str:
         """
-        Získá URL nahraného média podle attachment ID.
+        Attempts to retrieve the media URL with a simple retry mechanism.
         """
         url = f"{self.base_url}/wp-json/wp/v2/media/{attachment_id}"
-        response = requests.get(url, auth=self.auth)
-        if response.status_code == 200:
-            media_url = response.json().get('source_url')
-            return media_url
-        else:
-            logger.error(f"Nezdařilo se získat URL média pro attachment {attachment_id}: {response.status_code}")
-            raise RuntimeError(f"Failed to retrieve media URL for attachment {attachment_id}")
+        for attempt in range(1, retries + 1):
+            response = requests.get(url, auth=self.auth)
+            if response.status_code == 200:
+                media_url = response.json().get('source_url')
+                if media_url:
+                    return media_url
+            else:
+                logger.error(
+                    f"Attempt {attempt}: Failed to retrieve media URL for attachment {attachment_id}: {response.status_code}"
+                )
+            time.sleep(delay)
+        raise RuntimeError(f"Failed to retrieve media URL for attachment {attachment_id} after {retries} attempts")
 
     def create_post(self, title: str, content: str):
         """
@@ -76,7 +113,14 @@ class WordpressClient:
             "status": "publish",
             "categories": [aigenerated_category_id]
         }
-        response = requests.post(url, auth=self.auth, json=data)
+        response = retry_request(
+            requests.post,
+            retries=3,
+            delay=2,
+            url=url,
+            auth=self.auth,
+            json=data
+        )
         if response.status_code == 201:
             logger.info("Příspěvek vytvořen.")
             return response.json()
@@ -99,7 +143,14 @@ class WordpressClient:
             "categories": [aigenerated_category_id],
             "featured_media": attachment_id
         }
-        response = requests.post(url, auth=self.auth, json=data)
+        response = retry_request(
+            requests.post,
+            retries=3,
+            delay=2,
+            url=url,
+            auth=self.auth,
+            json=data
+        )
         if response.status_code == 201:
             logger.info("Příspěvek s obrázkem vytvořen.")
             return response.json()
@@ -128,7 +179,14 @@ class WordpressClient:
             "status": "publish",
             "categories": [aigenerated_category_id]
         }
-        response = requests.post(url, auth=self.auth, json=data)
+        response = retry_request(
+            requests.post,
+            retries=3,
+            delay=2,
+            url=url,
+            auth=self.auth,
+            json=data
+        )
         if response.status_code == 201:
             logger.info("Příspěvek s audiem vytvořen.")
             return response.json()
